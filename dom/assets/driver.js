@@ -14,10 +14,10 @@
       ];
     }
 
-    new VideoEndPoint(...getVideoTags('V1'));
-    new VideoEndPoint(...getVideoTags('V2'));
-    new VideoEndPoint(...getVideoTags('V3'));
-    new VideoEndPoint(...getVideoTags('V4'));
+    // new VideoEndPoint(...getVideoTags('V1'));
+    // new VideoEndPoint(...getVideoTags('V2'));
+    // new VideoEndPoint(...getVideoTags('V3'));
+    // new VideoEndPoint(...getVideoTags('V4'));
 
     /**** Utility DOM functions ****/
     function getCurrentTarget(ev) {
@@ -52,5 +52,16 @@
     document.querySelectorAll('.startCall').forEach((elem) => {elem.addEventListener('click', startCall);});
     document.querySelectorAll('.endCall').forEach((elem) => {elem.addEventListener('click', endCall);});
     document.querySelectorAll('.pause').forEach((elem) => {elem.addEventListener('click', pauseVideo);});
+
+    document.querySelector('#register').addEventListener('click', () => {
+      document.querySelector('#registerContainer').style.display = 'none';
+      document.querySelector('#videoContainer').style.display = 'block';
+
+      const username = document.querySelector('#registerInput').value;
+      document.querySelector('#placeholderUsername').id = username;
+
+      new VideoEndPoint(...getVideoTags(username));
+      // document.querySelector('#registerInput')
+    });
   });
 })();
