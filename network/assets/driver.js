@@ -1,16 +1,30 @@
-/* global document */
+/* global document, EndPoint, VideoEndPoint */
 (function() {
   document.addEventListener("DOMContentLoaded", function() {
     // Create four end points, one for out sender and one for our receiver.
-    var localEndPoint;
+    console.log("CREATING VIDEO END POINTS");
+
+    // getVideoTags
+    function getVideoTags(name) {
+      return [
+        name,
+        document.querySelector('#'+name+' .remoteVideo'),
+        document.querySelector('#'+name+' .localVideo'),
+        document.querySelector('#'+name+' .state')
+      ];
+    }
+
+    // new VideoEndPoint(...getVideoTags('V1'));
+    // new VideoEndPoint(...getVideoTags('V2'));
+    // new VideoEndPoint(...getVideoTags('V3'));
+    // new VideoEndPoint(...getVideoTags('V4'));
 
     /**** Utility DOM functions ****/
     function getCurrentTarget(ev) {
       return ev.currentTarget.parentElement;
     }
     function endPointFromEvent(ev) {
-      return localEndPoint;
-      // return EndPoint.get(ev.currentTarget.parentElement.getAttribute('id'));
+      return EndPoint.get(ev.currentTarget.parentElement.getAttribute('id'));
     }
 
     /**** Button Handlers ****/
@@ -24,39 +38,30 @@
     }
     function startCall(ev) {
       // Ask the target whether we can call
-      endPointFromEvent(ev)
-         .startCall(getCurrentTarget(ev).querySelector('.target').value);
-    }
-    function startSystem() {
-      // Get the name. If it's valid THEN create a video end point and display the controls.
-      var myname = document.querySelector('.myname').value;
-      if (myname==null || myname.search(/\S/)<0) {
-        alert("Enter a name to proceed");
-        return;
+      // Ask the target whether we can call
+      var target = getCurrentTarget(ev).querySelector('.target').value;
+      if (target.search(/\S/)>=0) {
+        console.log("CREATE CALL FROM EndPoint "+target);
+        endPointFromEvent(ev).startCall(target);
       }
-      // Have a name - hide the start controls and show the video call information.
-      var ctrl = document.getElementById('identity');
-      if (ctrl!=null)
-        ctrl.classList.add('hidden');
-
-      ctrl = document.getElementById('videocontrols');
-      if (ctrl!=null) {
-        ctrl.classList.remove('hidden');
-
-        // And change the ID of this element to be the name currently entered
-        ctrl.setAttribute('id',myname);
+      else {
+        alert("Call who?");
       }
-      localEndPoint = new VideoEndPoint(
-        myname,
-        document.querySelector('#videowrap .remoteVideo'),
-        document.querySelector('#videowrap .localVideo'),
-        document.querySelector('#videowrap .state')
-      );
     }
     // Set up button handlers
     document.querySelectorAll('.startCall').forEach((elem) => {elem.addEventListener('click', startCall);});
     document.querySelectorAll('.endCall').forEach((elem) => {elem.addEventListener('click', endCall);});
     document.querySelectorAll('.pause').forEach((elem) => {elem.addEventListener('click', pauseVideo);});
-    document.querySelector('.initialise').addEventListener('click', startSystem);
+
+    document.querySelector('#register').addEventListener('click', () => {
+      document.querySelector('#registerContainer').style.display = 'none';
+      document.querySelector('#videoContainer').style.display = 'block';
+
+      const username = document.querySelector('#registerInput').value;
+      document.querySelector('#placeholderUsername').id = username;
+
+      new VideoEndPoint(...getVideoTags(username));
+      // document.querySelector('#registerInput')
+    });
   });
 })();

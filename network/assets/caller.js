@@ -2,11 +2,6 @@
 const VideoEndPoint = (function() {
   const RING_TIMEOUT = 5000; // 5 seconds.
 
-  function _onCreateSessionDescriptionError(error) {
-    console.log('===============================================================');
-    console.log('Failed to create session description: ' + error.toString());
-  }
-
   /** @class VideoEndPoint
    *  @description Each instance of this class represents a single EndPoint. In practice or a real application
    *  there would be exactly ONE instance of this class in the system.
@@ -19,9 +14,9 @@ const VideoEndPoint = (function() {
       // Create a poller for this client
       super(name);
       this._videoRemoteTag = videoRemoteTag;
-      this._videoLocalTag  = videoLocalTag;
-      this._statusTag      = statusTag;
-      this._state          = 'IDLE';
+      this._videoLocalTag = videoLocalTag;
+      this._statusTag = statusTag;
+      this._state = 'IDLE';
     }
     /** @method setState
      *  @description Single point through which state changes are made. Simple utility that allows us to easily
@@ -34,17 +29,6 @@ const VideoEndPoint = (function() {
       this._state = newState;
       this._statusTag.innerHTML = newState;
       return this;
-    }
-    /** @method getMediaStream
-     *  @description Return a Promise that resolves to the media to be used for this user. Each EndPoint has it's own Promise. The
-     *  first time this method is invoked on an EndPoint it requests the media from the browser and stores the media promise returned.
-     *  @return {Promise} that resolves when media is available.
-     */
-    getMediaStream() {
-      if (this._localMediaPromise==null) {
-        this._localMediaPromise = navigator.mediaDevices.getUserMedia({ video: true });
-      }
-      return this._localMediaPromise;
     }
     /** @method receive
      *  @description Entry point called by the base class when it receives a message for this object from another EndPoint.
@@ -65,135 +49,21 @@ const VideoEndPoint = (function() {
       case 'ACCEPT_CALL':
         this.callAccepted(from, data);
         break;
+      case 'END_CALL':
+        this.endCall(from, data);
+        break;
+      /* MESSAGES USED TO CARRY WEBRTC SIGNALLING */
       case 'SDP_OFFER':
+        // console.log('++++++++++++++++ SDP offer received, data is: ', data);
         this.receivedIncomingSDPoffer(from, data);
         break;
       case 'SDP_ANSWER':
         this.receivedIncomingSDPanswer(from, data);
         break;
       case 'ICE_CANDIDATE':
-        this.receivedIceCandidate(from, data);
-        break;
-      case 'END_CALL':
-        this.endCall(from, data);
+        this.receivedCandidate(from, data);
         break;
       }
-    }
-    /** @method createPeerConnection
-     *  @description Create an RTCPeerConnection object for this EndPoint and send it to a remote EndPoint. As
-     *  part of the process the method gets the media stream from the browser and attaches it to the
-     *  local (.self) video tag.
-     *  @param {String} from - the name of the remote EndPoint with which we're making a call.
-     *  @return {Promose} resolves when the Peer Connection has been created and the media streams
-     *  have been successfully attached.
-     */
-    createPeerConnection() {
-      // Create a peer connector for our end of this conversation
-      var pc = this.peerConnector = new RTCPeerConnection();
-
-      pc.onicecandidate = (e) => this.sendIceCandidate(e.candidate);
-      pc.onaddstream    = (e) => this.showRemoteStream(e.stream);
-
-      return this.getMediaStream().then((mediaStream) => {
-        // Create a peer connector for our end of this call
-        pc.addStream(mediaStream);
-
-        // Attach this stream to a video tag...
-        this._videoLocalTag.srcObject = mediaStream;
-        this._videoLocalTag.play();
-
-        return Promise.resolve(pc);
-      });
-    }
-    /** @method sendIceCandidate
-     *  @description Got and ICE candidate so send to the remote end
-     */
-    sendIceCandidate(candidate) {
-      this.log("HAVE ICE CANDIDATE (CALLED): ", candidate);
-      if (candidate!=null)
-        this.send(this._party, "ICE_CANDIDATE", candidate);
-    }
-    /** @method receivedIceCandidate
-     *  @description An serialised ICE candidate has been received. There can be multiple ICE candidates per call. Each needs to be
-     *  restored by creating a new RTCIceCandidate object and then giving that to the calls peer connection object.
-     */
-    receivedIceCandidate(from, data) {
-      if (this._state!='IDLE') {
-        var candidate = new RTCIceCandidate(data);
-        this.peerConnector.addIceCandidate(candidate)
-        .then(
-          ()    => this.log("Found ICE candidates",this.peerConnector),
-          (err) => this.log("ERROR: Can't Find ICE candidates",err,this.peerConnector)
-        );
-      }
-    }
-    /** @method createSDPoffer
-     *  @Create an SDP offer for this call. This is always created by the end that started the call.
-     */
-    createSDPoffer() {
-      this.peerConnector.createOffer({
-        offerToReceiveAudio: 1,
-        offerToReceiveVideo: 1
-      }).then((offer) => {
-        // Give the offer description to our end of the connector
-        this.peerConnector.setLocalDescription(offer);
-
-        // Send the offer to the remote end of the peer connector
-        this.send(this._party, "SDP_OFFER", offer);
-      },_onCreateSessionDescriptionError);
-    }
-    createAnswerTo(offer) {
-      this.peerConnector.setRemoteDescription(offer).then(
-        () => {
-          this.log("setRemoteDescription COMPLETE- Create answer");
-          // And generate an answering offer
-          this.peerConnector.createAnswer().then(
-            (desc) => {
-              this.log('Answer from RECEIVER {'+this._name+'}:\n' + desc.sdp);
-              this.peerConnector.setLocalDescription(desc);
-
-              // And send this to desciption to the remote end
-              this.send(this._party, "SDP_ANSWER", desc);
-            },
-            _onCreateSessionDescriptionError
-          );
-        },
-        () => this.log("setRemoteDescription FAILED")
-      );
-    }
-    /** @method receivedIncomingSDPoffer
-     *  @description Process an incoming SDP offer. This is ignored if we're not currently the receiving party in a
-     *  call. We store the description as our remote description and then create an SDP answer which we store
-     *  as our local description then send back to the instigator of the call with the 'SDP_ANSWER' method.
-     */
-    receivedIncomingSDPoffer(from, data) {
-      this.log("PROCESSING INCOMING SDP OFFER...");
-      if (this._state=='CALLED') {
-        this.createPeerConnection()
-        .then(() => this.createAnswerTo(data));
-      }
-    }
-    /** @method receivedIncomingSDPoffer
-     *  @description We've sent and SDP description to the EndPoint we're calling and this is the answer to that
-     *  offer. We store this as out remote description.
-     */
-    receivedIncomingSDPanswer(from, data) {
-      this.log("PROCESSING INCOMING SDP ANSWER...");
-      if (this._state=='CALLER') {
-        this.log("Accepting incoming offer...", data);
-        this.peerConnector.setRemoteDescription(data).then(
-          () => this.log("setRemoteDescription COMPLETE"),
-          () => this.log("setRemoteDescription FAILED")
-        );
-      }
-    }
-    /** @method showRemoteStream
-     *  @description Given a remote stream (from the peer connection) apply it to the video tag we hold.
-     */
-    showRemoteStream(stream) {
-      this.log('Received remote stream for: ', this._name);
-      this._videoRemoteTag.srcObject = stream;
-      this._videoRemoteTag.play();
     }
     /** @method incomingCall
      *  @description incoming call request handler. If this EndPoint is IDLE then we accept the call
@@ -210,7 +80,6 @@ const VideoEndPoint = (function() {
       else {
         this.setState('CALLED');
         this._party = from;
-
         this.send(from, 'ACCEPT_CALL');
       }
     }
@@ -232,28 +101,32 @@ const VideoEndPoint = (function() {
         }
         this.setState('CALLER');
 
-        // And then give the transmitting stream the ones we have
-        this.createPeerConnection().then((pc) => {
-          this.log('PeerConnector (CALLER) createOffer start');
-          var offerOptions = {
+        this.startVideo().then(mediaStream => {
+          const pc = this._pc = new RTCPeerConnection();
+
+          pc.onaddstream = evt => {
+            this._videoRemoteTag.srcObject = evt.stream;
+            this._videoRemoteTag.play();
+          }
+
+          pc.onicecandidate = evt => {
+            this.send(from, 'ICE_CANDIDATE', evt.candidate);
+          }
+
+          pc.addStream(mediaStream);
+
+          const offerOptions = {
             offerToReceiveAudio: 1,
-            offerToReceiveVideo: 1
-          };
-          pc.createOffer(
-            offerOptions
-          ).then(
-            (offer) => {
-              this.log("WE HAVE AN OFFER...",offer);
+            offerToReceiveVideo: 1,
+          }
 
-              // Give the offer description to our end of the connector
-              pc.setLocalDescription(offer);
-
-              // Send the offer to the remote end of the peer connector
-              this.send(from, "SDP_OFFER", offer);
-            },
-            _onCreateSessionDescriptionError
-          );
-        });
+          pc.createOffer(offerOptions).then(desc => {
+            pc.setLocalDescription(desc);
+            console.log('===========', desc);
+            this.send(from, 'SDP_OFFER', desc);
+            // this.send(from, 'SDP_OFFER', { pc });
+          });
+        }).catch();
       }
     }
     /** @method callDenied
@@ -326,6 +199,7 @@ const VideoEndPoint = (function() {
           delete this._ringTimer;
           this.callDenied(target);
         }, RING_TIMEOUT);
+
         this.send(target, 'CALL_REQUEST');
       }
       else {
@@ -339,14 +213,70 @@ const VideoEndPoint = (function() {
     pauseCall() {
       if (this._state != 'IDLE') {
         this.log("LOCAL MEDIA PAUSED");
-        this.getMediaStream().then((media) => {
-          this.log("GOT STREAM TO PAUSE");
-          media.getTracks().forEach((track) => {
-            this.log("TOGGLING TRACK STATE: ",track);
-            track.enabled = !track.enabled;
-          });
-        });
-        // tag.srcObject.getTracks().forEach(t => t.enabled = !t.enabled);
+      }
+    }
+
+    startVideo() {
+      var self = this;
+      var constraints = {audio: false, video: true};
+
+      if (!this._videoPromise) {
+        this._videoPromise = navigator.mediaDevices.getUserMedia(constraints);
+        this._videoPromise
+          .then(mediaStream => {
+            var video = self._videoLocalTag;
+            video.srcObject = mediaStream;
+            video.onloadedmetadata = function(e) {
+              video.play();
+            };
+          })
+          .catch(function(err) { console.log(err.name + ": " + err.message); })
+      }
+
+      return this._videoPromise;
+    }
+
+    receivedIncomingSDPoffer(from, data) {
+      this.startVideo().then(mediaStream => {
+        const pc = this._pc = new RTCPeerConnection();
+
+        pc.onaddstream = evt => {
+          this._videoRemoteTag.srcObject = evt.stream;
+          this._videoRemoteTag.play();
+        }
+
+        pc.onicecandidate = evt => {
+          this.send(from, 'ICE_CANDIDATE', evt.candidate);
+        }
+
+        pc.addStream(mediaStream);
+
+        const answerOptions = {
+          offerToReceiveAudio: 1,
+          offerToReceiveVideo: 1,
+        }
+
+        pc.setRemoteDescription(data).then(() => {
+          pc.createAnswer(answerOptions).then(answer => {
+            pc.setLocalDescription(answer);
+            this.send(from, 'SDP_ANSWER', answer);
+          })
+        })
+      }).catch();
+    }
+
+    receivedIncomingSDPanswer(from, data) {
+      this._pc.setRemoteDescription(data).then(() => {
+        console.log(1);
+      })
+    }
+
+    receivedCandidate(from, data) {
+      if (data) {
+        console.log(data);
+        const candidate = new RTCIceCandidate(data);
+
+        this._pc.addIceCandidate(candidate);
       }
     }
   }

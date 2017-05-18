@@ -16,17 +16,16 @@
     <div class="container">
       <div class='row' id="banner">
         <div class="col-xs-12" id='logo-container'>
-          <h1>Web RTC Comms</h1>
-          <div id="identity">
-            <input type="text" name="myname" class="myname" placeholder="Enter your name">
-            <button class="initialise">start</button>
-          </div>
+          <h1>webRTC Local Signaling Demo</h1>
         </div>
       </div>
-      <div id="videocontrols" class="row hidden">
-        <div class="col-xs-12" id="videowrap" style="outline:2px solid #c0c0c0;position:relative">
-          <h2>Call...</h2>
-          <p>Status: <span class="state">IDLE</span></p>
+      <div id="registerContainer">
+        <input type="text" id="registerInput" name="" value="" placeholder="Enter your username">
+        <button type="button" id="register" name="register">REGISTER</button>
+      </div>
+      <div class="row" id="videoContainer" style="display: none;">
+        <div class="col-xs-12 col-md-6" id='placeholderUsername' style="outline:2px solid #c0c0c0;position:relative">
+          <h2>Me: <span class="state">IDLE</span></h2>
           <button class="pause">Pause</button>
           <button class="endCall">Hangup</button>
           <input type="text" name="target" class="target" placeholder="Enter recipient call name">
