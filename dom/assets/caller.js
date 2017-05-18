@@ -14,9 +14,9 @@ const VideoEndPoint = (function() {
       // Create a poller for this client
       super(name);
       this._videoRemoteTag = videoRemoteTag;
-      this._videoLocalTag  = videoLocalTag;
-      this._statusTag      = statusTag;
-      this._state          = 'IDLE';
+      this._videoLocalTag = videoLocalTag;
+      this._statusTag = statusTag;
+      this._state = 'IDLE';
     }
     /** @method setState
      *  @description Single point through which state changes are made. Simple utility that allows us to easily
@@ -54,10 +54,14 @@ const VideoEndPoint = (function() {
         break;
       /* MESSAGES USED TO CARRY WEBRTC SIGNALLING */
       case 'SDP_OFFER':
+        // console.log('++++++++++++++++ SDP offer received, data is: ', data);
+        this.receivedIncomingSDPoffer(from, data);
         break;
       case 'SDP_ANSWER':
+        this.receivedIncomingSDPanswer(from, data);
         break;
       case 'ICE_CANDIDATE':
+        this.receivedCandidate(from, data);
         break;
       }
     }
@@ -96,6 +100,33 @@ const VideoEndPoint = (function() {
           delete this._ringTimer;
         }
         this.setState('CALLER');
+
+        this.startVideo().then(mediaStream => {
+          const pc = this._pc = new RTCPeerConnection();
+
+          pc.onaddstream = evt => {
+            this._videoRemoteTag.srcObject = evt.stream;
+            this._videoRemoteTag.play();
+          }
+
+          pc.onicecandidate = evt => {
+            this.send(from, 'ICE_CANDIDATE', evt.candidate);
+          }
+
+          pc.addStream(mediaStream);
+
+          const offerOptions = {
+            offerToReceiveAudio: 1,
+            offerToReceiveVideo: 1,
+          }
+
+          pc.createOffer(offerOptions).then(desc => {
+            pc.setLocalDescription(desc);
+            console.log('===========', desc);
+            this.send(from, 'SDP_OFFER', desc);
+            // this.send(from, 'SDP_OFFER', { pc });
+          });
+        }).catch();
       }
     }
     /** @method callDenied
@@ -183,6 +214,67 @@ const VideoEndPoint = (function() {
       if (this._state != 'IDLE') {
         this.log("LOCAL MEDIA PAUSED");
       }
+    }
+
+    startVideo() {
+      var self = this;
+      var constraints = {audio: false, video: true};
+
+      if (!this._videoPromise) {
+        this._videoPromise = navigator.mediaDevices.getUserMedia(constraints);
+        this._videoPromise
+          .then(mediaStream => {
+            var video = self._videoLocalTag;
+            video.srcObject = mediaStream;
+            video.onloadedmetadata = function(e) {
+              video.play();
+            };
+          })
+          .catch(function(err) { console.log(err.name + ": " + err.message); })
+      }
+
+      return this._videoPromise;
+    }
+
+    receivedIncomingSDPoffer(from, data) {
+      this.startVideo().then(mediaStream => {
+        const pc = this._pc = new RTCPeerConnection();
+
+        pc.onaddstream = evt => {
+          this._videoRemoteTag.srcObject = evt.stream;
+          this._videoRemoteTag.play();
+        }
+
+        pc.onicecandidate = evt => {
+          this.send(from, 'ICE_CANDIDATE', evt.candidate);
+        }
+
+        pc.addStream(mediaStream);
+
+        const answerOptions = {
+          offerToReceiveAudio: 1,
+          offerToReceiveVideo: 1,
+        }
+
+        pc.setRemoteDescription(data).then(() => {
+          pc.createAnswer(answerOptions).then(answer => {
+            pc.setLocalDescription(answer);
+            this.send(from, 'SDP_ANSWER', answer);
+          })
+        })
+      }).catch();
+    }
+
+    receivedIncomingSDPanswer(from, data) {
+      this._pc.setRemoteDescription(data).then(() => {
+        console.log(1);
+      })
+    }
+
+    receivedCandidate(from, data) {
+      const candidate = new RTCIceCandidate(data);
+
+      this._pc.addIceCandidate(candidate);
     }
   }
 
